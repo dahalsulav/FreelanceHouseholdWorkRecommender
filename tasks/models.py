@@ -1,39 +1,43 @@
 from django.contrib.auth.models import User
 from django.db import models
-from users.models import Customer, Worker
 
 
 class Task(models.Model):
-    customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
-    worker = models.ForeignKey(Worker, on_delete=models.CASCADE, null=True, blank=True)
-    title = models.CharField(max_length=200)
+    name = models.CharField(max_length=100)
     description = models.TextField()
+    price = models.FloatField()
     location = models.CharField(max_length=100)
-    status = models.CharField(max_length=100)
-    estimated_time = models.FloatField()
+    start_date = models.DateField()
+    end_date = models.DateField()
+    duration = models.IntegerField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    status = models.CharField(max_length=20)
+    customer = models.ForeignKey(
+        User, related_name="task_customer", on_delete=models.CASCADE
+    )
+    worker = models.ForeignKey(
+        User,
+        related_name="task_worker",
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+    )
 
     def __str__(self):
-        return self.title
+        return self.name
 
 
-class TaskComment(models.Model):
+class Ratings(models.Model):
+    rating = models.FloatField()
+    review = models.TextField()
+    customer = models.ForeignKey(
+        User, related_name="rating_customer", on_delete=models.CASCADE
+    )
+    worker = models.ForeignKey(
+        User, related_name="rating_worker", on_delete=models.CASCADE
+    )
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    comment = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.comment
-
-
-class TaskFile(models.Model):
-    task = models.ForeignKey(Task, on_delete=models.CASCADE)
-    file = models.FileField(upload_to="tasks/files/")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return self.file.name
+        return self.review

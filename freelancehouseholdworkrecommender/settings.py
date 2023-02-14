@@ -24,8 +24,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "users",
-    "tasks",
-    "recommendation_algorithm",
 ]
 
 MIDDLEWARE = [
@@ -44,7 +42,7 @@ TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [
-            os.path.join(BASE_DIR, ""),
+            os.path.join(BASE_DIR, "users/templates"),
         ],
         "APP_DIRS": True,
         "OPTIONS": {
@@ -71,6 +69,7 @@ DATABASES = {
     }
 }
 
+MESSAGE_STORAGE = "django.contrib.messages.storage.session.SessionStorage"
 
 # Password validation
 # https://docs.djangoproject.com/en/4.1/ref/settings/#auth-password-validators

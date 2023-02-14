@@ -1,0 +1,16 @@
+{% extends 'base.html' %} {% block content %}
+
+<h1>Welcome to the Worker Dashboard</h1>
+<nav>
+  <a href="{% url 'worker_list' %}">Worker List</a>
+  <a href="{% url 'worker_profile' %}">Worker Profile</a>
+  <a href="{% url 'worker_notifications' %}">Notifications</a>
+</nav>
+<h2>Recent Notifications</h2>
+<ul>
+  {% for notification in recent_notifications %}
+  <li>{{ notification }}</li>
+  {% endfor %}
+</ul>
+
+{% endblock %}
