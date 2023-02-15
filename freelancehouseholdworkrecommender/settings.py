@@ -35,6 +35,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+ADMIN_EMAIL = "freelancehhwr@gmail.com"
 
 ROOT_URLCONF = "freelancehouseholdworkrecommender.urls"
 
@@ -118,4 +119,4 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "fhhwrecommender@gmail.com"
-EMAIL_HOST_PASSWORD = "Test@123#"
+EMAIL_HOST_PASSWORD = "Password"

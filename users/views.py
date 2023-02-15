@@ -35,15 +35,16 @@ from users.models import Customer, Worker
 from users.tokens import account_activation_token
 
 
-class CustomerSignUp(TemplateView):
+class CustomerSignup(TemplateView):
     template_name = "signup_customer.html"
+    form_class = CustomerRegistrationForm
 
     def get(self, request, *args, **kwargs):
-        form = CustomerRegistrationForm()
+        form = self.form_class()
         return render(request, self.template_name, {"form": form})
 
     def post(self, request, *args, **kwargs):
-        form = CustomerRegistrationForm(request.POST)
+        form = self.form_class(request.POST)
         if form.is_valid():
             # Check if email already exists
             email = form.cleaned_data.get("email")
@@ -65,22 +66,20 @@ class CustomerSignUp(TemplateView):
                 )
                 return render(request, self.template_name, {"form": form})
 
-            user = form.save()
+            # Create the user and customer instances
+            user = form.save(commit=False)
             user.is_customer = True
             user.is_active = False
-            user.refresh_from_db()
+            user.email = email
             user.save()
 
             customer = Customer.objects.create(
                 user=user,
-                first_name=form.cleaned_data.get("first_name"),
-                last_name=form.cleaned_data.get("last_name"),
-                email=form.cleaned_data.get("email"),
-                phone_number=form.cleaned_data.get("phone_number"),
-                location=form.cleaned_data.get("location"),
+                phone_number=phone_number,
+                location=form.cleaned_data["location"],
             )
 
-            # send email to customer
+            # Send email to customer
             current_site = get_current_site(request)
             mail_subject = "Activate your account."
             message = render_to_string(
@@ -100,7 +99,7 @@ class CustomerSignUp(TemplateView):
                 form.add_error(None, str(e))
                 return render(request, self.template_name, {"form": form})
 
-            # send notification email to admin
+            # Send notification email to admin
             admin_email = settings.ADMIN_EMAIL
             message = render_to_string(
                 "new_customer_notification.html",
@@ -116,6 +115,7 @@ class CustomerSignUp(TemplateView):
                 return render(request, self.template_name, {"form": form})
 
             return redirect("registration/account_activation_sent")
+
         return render(request, self.template_name, {"form": form})
 
 

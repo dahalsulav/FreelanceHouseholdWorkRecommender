@@ -17,15 +17,12 @@ class LoginForm(forms.Form):
 
 
 class CustomerRegistrationForm(UserCreationForm):
-    first_name = forms.CharField(max_length=100)
-    last_name = forms.CharField(max_length=100)
-    email = forms.EmailField()
-    phone_number = forms.CharField(max_length=20)
-    location = forms.CharField(max_length=100)
+    phone_number = forms.CharField(max_length=20, required=True)
+    location = forms.CharField(max_length=100, required=True)
 
-    class Meta:
-        model = User
-        fields = [
+    class Meta(UserCreationForm.Meta):
+        model = Customer
+        fields = (
             "username",
             "first_name",
             "last_name",
@@ -34,7 +31,7 @@ class CustomerRegistrationForm(UserCreationForm):
             "location",
             "password1",
             "password2",
-        ]
+        )
 
 
 class CustomerProfileUpdateForm(forms.ModelForm):
@@ -56,9 +53,6 @@ class CustomerProfileUpdateForm(forms.ModelForm):
 
 
 class WorkerRegistrationForm(UserCreationForm):
-    first_name = forms.CharField(max_length=100)
-    last_name = forms.CharField(max_length=100)
-    email = forms.EmailField()
     phone_number = forms.CharField(max_length=20)
     location = forms.CharField(max_length=100)
     skillset = forms.CharField()
