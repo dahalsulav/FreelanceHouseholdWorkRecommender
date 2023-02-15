@@ -10,7 +10,7 @@ from django.contrib.auth.views import (
 from django.contrib import messages
 from django.contrib.sites.shortcuts import get_current_site
 from django.core.exceptions import PermissionDenied
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, BadHeaderError
 from django.http import HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
@@ -33,9 +33,10 @@ from users.forms import (
 )
 from users.models import Customer, Worker
 from users.tokens import account_activation_token
+from django.conf import settings
 
 
-class CustomerSignup(TemplateView):
+class CustomerSignUp(TemplateView):
     template_name = "signup_customer.html"
     form_class = CustomerRegistrationForm
 
@@ -95,8 +96,8 @@ class CustomerSignup(TemplateView):
             email = EmailMessage(mail_subject, message, to=[to_email])
             try:
                 email.send()
-            except ValidationError as e:
-                form.add_error(None, str(e))
+            except BadHeaderError as e:
+                form.add_error(None, "An error occurred while sending the email.")
                 return render(request, self.template_name, {"form": form})
 
             # Send notification email to admin
@@ -110,13 +111,14 @@ class CustomerSignup(TemplateView):
             email = EmailMessage("New customer sign up", message, to=[admin_email])
             try:
                 email.send()
-            except ValidationError as e:
-                form.add_error(None, str(e))
+            except BadHeaderError as e:
+                form.add_error(None, "An error occurred while sending the email.")
                 return render(request, self.template_name, {"form": form})
 
             return redirect("registration/account_activation_sent")
-
-        return render(request, self.template_name, {"form": form})
+        else:
+            form.add_error(None, "An error occurred while validating the form.")
+            return render(request, self.template_name, {"form": form})
 
 
 class CustomerLogin(Login):

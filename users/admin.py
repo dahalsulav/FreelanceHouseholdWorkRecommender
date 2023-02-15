@@ -1,36 +1,37 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from django.forms import TextInput, Textarea
+from django.db import models
 from .models import User, Customer, Worker
 
 
 class CustomUserAdmin(UserAdmin):
     list_display = (
-        "username",
         "email",
+        "username",
         "first_name",
         "last_name",
         "is_customer",
         "is_worker",
-        "is_staff",
+        "is_superuser",
     )
-    list_filter = ("is_customer", "is_worker", "is_staff")
+    list_filter = ("is_customer", "is_worker", "is_superuser")
+    search_fields = ("email", "username", "first_name", "last_name")
+    ordering = ("email",)
     fieldsets = (
-        (None, {"fields": ("username", "password")}),
-        ("Personal info", {"fields": ("first_name", "last_name", "email")}),
+        (None, {"fields": ("email", "password")}),
+        ("Personal info", {"fields": ("username", "first_name", "last_name")}),
         (
             "Permissions",
             {
                 "fields": (
                     "is_active",
-                    "is_staff",
                     "is_superuser",
                     "groups",
                     "user_permissions",
                 )
             },
         ),
-        ("Important dates", {"fields": ("last_login", "date_joined")}),
-        ("User type", {"fields": ("is_customer", "is_worker", "is_admin")}),
     )
     add_fieldsets = (
         (
@@ -38,25 +39,16 @@ class CustomUserAdmin(UserAdmin):
             {
                 "classes": ("wide",),
                 "fields": (
+                    "email",
                     "username",
-                    "password1",
-                    "password2",
                     "first_name",
                     "last_name",
-                    "email",
+                    "password1",
+                    "password2",
                     "is_customer",
                     "is_worker",
-                    "is_admin",
-                    "is_staff",
                     "is_superuser",
                 ),
             },
         ),
     )
-    search_fields = ("username", "email", "first_name", "last_name")
-    ordering = ("username",)
-
-
-admin.site.register(User, CustomUserAdmin)
-admin.site.register(Customer)
-admin.site.register(Worker)
