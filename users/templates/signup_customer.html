@@ -1,7 +1,22 @@
 {% extends 'base.html' %} {% block content %}
 <h2>Customer Sign Up</h2>
 <form method="post">
-  {% csrf_token %} {{ form.as_p }}
+  {% csrf_token %} {{ form.username.label_tag }} {{ form.username }}
+  <br />
+  {{ form.first_name.label_tag }} {{ form.first_name }}
+  <br />
+  {{ form.last_name.label_tag }} {{ form.last_name }}
+  <br />
+  {{ form.email.label_tag }} {{ form.email }}
+  <br />
+  {{ form.password1.label_tag }} {{ form.password1 }}
+  <br />
+  {{ form.password2.label_tag }} {{ form.password2 }}
+  <br />
+  {{ form.phone_number.label_tag }} {{ form.phone_number }}
+  <br />
+  {{ form.location.label_tag }} {{ form.location }}
+  <br />
   <button type="submit">Sign Up</button>
 </form>
 {% endblock %}

@@ -39,6 +39,7 @@ from django.conf import settings
 class CustomerSignUp(TemplateView):
     template_name = "signup_customer.html"
     form_class = CustomerRegistrationForm
+    success_url = reverse_lazy("registration/account_activation_sent")
 
     def get(self, request, *args, **kwargs):
         form = self.form_class()
@@ -72,10 +73,13 @@ class CustomerSignUp(TemplateView):
             user.is_customer = True
             user.is_active = False
             user.email = email
-            user.save()
+            try:
+                user.save()
+            except ValidationError as e:
+                form.add_error(None, f"An error occurred while creating the user: {e}")
+                return render(request, self.template_name, {"form": form})
 
             customer = Customer.objects.create(
-                user=user,
                 phone_number=phone_number,
                 location=form.cleaned_data["location"],
             )
@@ -190,15 +194,17 @@ class WorkerSignUp(TemplateView):
         form = WorkerRegistrationForm(request.POST)
         if form.is_valid():
             user = form.save()
-            user.is_worker = False
+            user.is_worker = True
             user.is_active = False
             user.refresh_from_db()
-            user.save()
+            user.email = email
+            try:
+                user.save()
+            except ValidationError as e:
+                form.add_error(None, f"An error occurred while creating the user: {e}")
+                return render(request, self.template_name, {"form": form})
+
             worker = Worker.objects.create(
-                user=user,
-                first_name=form.cleaned_data.get("first_name"),
-                last_name=form.cleaned_data.get("last_name"),
-                email=form.cleaned_data.get("email"),
                 phone_number=form.cleaned_data.get("phone_number"),
                 location=form.cleaned_data.get("location"),
                 skillset=form.cleaned_data.get("skills"),
