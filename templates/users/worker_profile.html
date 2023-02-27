@@ -1,0 +1,16 @@
+{% extends "base.html" %} {% block content %}
+<h1>Worker Profile</h1>
+<p>Name: {{ worker.user.get_full_name }}</p>
+<p>Email: {{ worker.user.email }}</p>
+<p>Phone number: {{ worker.phone_number }}</p>
+<p>Location: {{ worker.location }}</p>
+<p>Hourly rate: {{ worker.hourly_rate }}</p>
+<p>Skills:</p>
+<ul>
+  {% for skill in worker.skills.all %}
+  <li>{{ skill.name }}</li>
+  {% empty %}
+  <li>No skills added yet.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

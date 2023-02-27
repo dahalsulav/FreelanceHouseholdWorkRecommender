@@ -1,55 +1,65 @@
 from django.urls import path
-from users.views import (
-    CustomerSignUp,
-    CustomerLogin,
-    CustomerLogout,
-    CustomerProfile,
-    CustomerProfileUpdate,
-    WorkerSignUp,
-    WorkerLogin,
-    WorkerLogout,
-    WorkerProfile,
-    WorkerProfileUpdate,
-    WorkerSkillsUpdate,
-    WorkerRateUpdate,
-)
-from django.shortcuts import render
+from django.contrib.auth import views as auth_views
+
+from . import views
+
 
 app_name = "users"
 
-
-def base(request):
-    return render(request, "base.html")
-
-
 urlpatterns = [
-    path("", base, name="base"),
-    path("customer/signup/", CustomerSignUp.as_view(), name="customer_signup"),
-    path("customer/login/", CustomerLogin.as_view(), name="customer_login"),
-    path("customer/logout/", CustomerLogout.as_view(), name="customer_logout"),
-    path("customer/profile/", CustomerProfile.as_view(), name="customer_profile"),
+    # Customer registration and login views
     path(
-        "customer/profile/update/",
-        CustomerProfileUpdate.as_view(),
-        name="customer_profile_update",
+        "register/",
+        views.CustomerRegistrationView.as_view(),
+        name="customer_registration",
     ),
-    path("worker/signup/", WorkerSignUp.as_view(), name="worker_signup"),
-    path("worker/login/", WorkerLogin.as_view(), name="worker_login"),
-    path("worker/logout/", WorkerLogout.as_view(), name="worker_logout"),
-    path("worker/profile/", WorkerProfile.as_view(), name="worker_profile"),
+    path("login/", views.CustomerLoginView.as_view(), name="customer_login"),
+    path("logout/", views.CustomerLogoutView.as_view(), name="customer_logout"),
     path(
-        "worker/profile/update/",
-        WorkerProfileUpdate.as_view(),
-        name="worker_profile_update",
+        "profile/", views.CustomerProfileUpdateView.as_view(), name="customer_profile"
+    ),
+    # Worker registration and login views
+    path(
+        "register/worker/",
+        views.WorkerRegistrationView.as_view(),
+        name="worker_registration",
+    ),
+    path("login/worker/", views.WorkerLoginView.as_view(), name="worker_login"),
+    path("logout/worker/", views.WorkerLogoutView.as_view(), name="worker_logout"),
+    path(
+        "profile/worker/",
+        views.WorkerProfileUpdateView.as_view(),
+        name="worker_profile",
+    ),
+    # Password reset views
+    path(
+        "password-reset/",
+        auth_views.PasswordResetView.as_view(
+            template_name="users/password_reset.html",
+            email_template_name="users/password_reset_email.html",
+            subject_template_name="users/password_reset_subject.txt",
+        ),
+        name="password_reset",
     ),
     path(
-        "worker/skills/update/",
-        WorkerSkillsUpdate.as_view(),
-        name="worker_skills_update",
+        "password-reset/done/",
+        auth_views.PasswordResetDoneView.as_view(
+            template_name="users/password_reset_done.html"
+        ),
+        name="password_reset_done",
     ),
     path(
-        "worker/rate/update/",
-        WorkerRateUpdate.as_view(),
-        name="worker_rate_update",
+        "reset/<uidb64>/<token>/",
+        auth_views.PasswordResetConfirmView.as_view(
+            template_name="users/password_reset_confirm.html"
+        ),
+        name="password_reset_confirm",
+    ),
+    path(
+        "reset/done/",
+        auth_views.PasswordResetCompleteView.as_view(
+            template_name="users/password_reset_complete.html"
+        ),
+        name="password_reset_complete",
     ),
 ]

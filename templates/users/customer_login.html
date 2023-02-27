@@ -1,0 +1,40 @@
+{% extends "users/base.html" %} {% block content %}
+<div class="container mt-5">
+  <div class="row">
+    <div class="col-md-6 offset-md-3">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title text-center">Customer Login</h3>
+        </div>
+        <div class="card-body">
+          {% if form.errors %}
+          <div class="alert alert-danger">
+            {% for field, errors in form.errors.items %}
+            <strong>{{ field }}:</strong>
+            {% for error in errors %} {{ error }}<br />
+            {% endfor %} {% endfor %}
+          </div>
+          {% endif %}
+          <form method="post">
+            {% csrf_token %}
+            <div class="form-group">
+              <label for="{{ form.email.id_for_label }}">Email</label>
+              {{ form.email }}
+            </div>
+            <div class="form-group">
+              <label for="{{ form.password.id_for_label }}">Password</label>
+              {{ form.password }}
+            </div>
+            <button type="submit" class="btn btn-primary btn-block mt-4">
+              Login
+            </button>
+          </form>
+        </div>
+        <div class="card-footer text-center">
+          <a href="{% url 'password_reset' %}">Forgot password?</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

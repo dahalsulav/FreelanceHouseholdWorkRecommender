@@ -1,10 +1,21 @@
-from django.contrib.auth import get_user_model
+from django.contrib.auth import authenticate, login
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import LogoutView
+from django.contrib.messages.views import SuccessMessageMixin
 from django.core.mail import send_mail
-from django.shortcuts import redirect
-from django.views.generic import CreateView
-
-from users.forms import CustomerRegistrationForm
-from users.models import Customer
+from django.db.models import Avg
+from django.urls import reverse_lazy
+from django.utils.decorators import method_decorator
+from django.views.generic import CreateView, DetailView, FormView, UpdateView
+from django.contrib.auth import get_user_model
+from .forms import (
+    CustomerRegistrationForm,
+    CustomerProfileUpdateForm,
+    LoginForm,
+    WorkerRegistrationForm,
+    WorkerProfileUpdateForm,
+)
+from .models import Customer, Worker
 
 User = get_user_model()
 
@@ -20,6 +31,12 @@ class CustomerRegistrationView(CreateView):
     model = Customer
     form_class = CustomerRegistrationForm
     template_name = "users/registration_form.html"
+    success_url = reverse_lazy("users:registration_done")
+
+    def dispatch(self, request, *args, **kwargs):
+        if self.request.user.is_authenticated:
+            return redirect("home")
+        return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
         """
@@ -29,35 +46,33 @@ class CustomerRegistrationView(CreateView):
 
         """
         try:
-            # Check if email already exists
             email = form.cleaned_data["email"]
+            username = form.cleaned_data["username"]
+            phone_number = form.cleaned_data["phone_number"]
+
             if User.objects.filter(email=email).exists():
                 form.add_error("email", "Email already exists.")
                 return self.form_invalid(form)
 
-            # Check if username already exists
-            username = form.cleaned_data["username"]
             if User.objects.filter(username=username).exists():
                 form.add_error("username", "Username already exists.")
                 return self.form_invalid(form)
 
-            # Check if phone number already exists
-            phone_number = form.cleaned_data["phone_number"]
             if Customer.objects.filter(phone_number=phone_number).exists():
                 form.add_error("phone_number", "Phone number already exists.")
                 return self.form_invalid(form)
 
             # Save customer to the database
-            self.object = form.save(commit=False)
-            self.object.is_customer = True
-            self.object.save()
+            customer = form.save(commit=False)
+            customer.is_customer = True
+            customer.save()
 
             # Send verification email to customer
             send_mail(
                 subject="Verify your email",
                 message="Please click the link below to verify your email.",
                 from_email="noreply@freelancehouseholdwork.com",
-                recipient_list=[self.object.email],
+                recipient_list=[customer.email],
                 fail_silently=False,
             )
 
@@ -70,10 +85,9 @@ class CustomerRegistrationView(CreateView):
                 fail_silently=False,
             )
 
-            return redirect("users:registration_done")
+            return super().form_valid(form)
 
         except Exception as e:
-            # If an error occurs, show the registration form again
             form.add_error(None, str(e))
             return self.form_invalid(form)
 
@@ -207,86 +221,99 @@ class CustomerProfileUpdateView(UpdateView):
         return Customer.objects.get(user=self.request.user)
 
 
-class WorkerSignUp(TemplateView):
-    template_name = "signup_worker.html"
+class WorkerRegistrationView(CreateView):
+    """
+    A view for worker registration.
 
-    def get(self, request, *args, **kwargs):
-        form = WorkerRegistrationForm()
-        return render(request, self.template_name, {"form": form})
+    On successful registration, sends email to worker and notification email to admin.
 
-    def post(self, request, *args, **kwargs):
-        form = WorkerRegistrationForm(request.POST)
-        if form.is_valid():
-            user = form.save()
+    """
+
+    model = Worker
+    form_class = WorkerRegistrationForm
+    template_name = "users/worker_registration_form.html"
+    success_url = reverse_lazy("registration/account_activation_sent")
+
+    def form_valid(self, form):
+        """
+        If form is valid, create a new worker and save to the database.
+
+        If email or username already exists, redirect back to registration form.
+
+        """
+        try:
+            # Check if email already exists
+            email = form.cleaned_data["email"]
+            if User.objects.filter(email=email).exists():
+                form.add_error("email", "Email already exists.")
+                return self.form_invalid(form)
+
+            # Check if username already exists
+            username = form.cleaned_data["username"]
+            if User.objects.filter(username=username).exists():
+                form.add_error("username", "Username already exists.")
+                return self.form_invalid(form)
+
+            # Save worker to the database
+            user = form.save(commit=False)
             user.is_worker = True
-            user.is_active = False
-            user.refresh_from_db()
-            user.email = email
-            try:
-                user.save()
-            except ValidationError as e:
-                form.add_error(None, f"An error occurred while creating the user: {e}")
-                return render(request, self.template_name, {"form": form})
+            user.is_active = False  # Worker is inactive until admin approves them
+            user.save()
 
+            # Create Worker model instance
             worker = Worker.objects.create(
+                user=user,
                 phone_number=form.cleaned_data.get("phone_number"),
                 location=form.cleaned_data.get("location"),
                 skillset=form.cleaned_data.get("skills"),
                 hourly_rate=form.cleaned_data.get("hourly_rate"),
             )
 
-            # send email to worker
-            current_site = get_current_site(request)
-            mail_subject = "Activate your account."
-            message = render_to_string(
-                "acc_active_email.html",
-                {
-                    "user": user,
-                    "domain": current_site.domain,
-                    "uid": urlsafe_base64_encode(force_bytes(user.pk)),
-                    "token": account_activation_token.make_token(user),
-                },
+            # Send verification email to worker
+            send_mail(
+                subject="Verify your email",
+                message="Please click the link below to verify your email.",
+                from_email="noreply@freelancehouseholdwork.com",
+                recipient_list=[user.email],
+                fail_silently=False,
             )
-            to_email = form.cleaned_data.get("email")
-            email = EmailMessage(mail_subject, message, to=[to_email])
-            email.send()
 
-            # send notification email to admin
-            admin_email = "freelancehhwr@gmail.com"
-            message = render_to_string(
-                "new_worker_notification.html",
-                {
-                    "worker": worker,
-                },
+            # Send notification email to admin
+            send_mail(
+                subject="New worker registration",
+                message="A new worker has registered on Freelance Household Work. Please log in to the admin panel to approve or reject the registration request.",
+                from_email="noreply@freelancehouseholdwork.com",
+                recipient_list=["admin@freelancehouseholdwork.com"],
+                fail_silently=False,
             )
-            email = EmailMessage("New worker sign up", message, to=[admin_email])
-            email.send()
 
-            return redirect("registration/account_activation_sent")
-        return render(request, self.template_name, {"form": form})
+            return super().form_valid(form)
+
+        except Exception as e:
+            # If an error occurs, show the registration form again
+            form.add_error(None, str(e))
+            return self.form_invalid(form)
 
 
-@method_decorator(never_cache, name="dispatch")
-@method_decorator(csrf_protect, name="dispatch")
-class WorkerLoginView(LoginView):
+class WorkerLoginView(FormView):
     """
     A view for logging in a worker.
 
     Allows the worker to log in to their account.
 
     Parameters:
-    - LoginView (class): Django generic view for logging a user in.
+    - FormView (class): Django generic view for rendering a form.
     """
 
-    template_name = "users/login.html"
+    template_name = "users/worker_login.html"
     form_class = LoginForm
-    success_url = reverse_lazy("worker_home")
+    success_url = reverse_lazy("worker_profile")
 
     def form_valid(self, form):
         """
         Called when a valid form is submitted.
 
-        Logs the worker in and sends a message to confirm the action.
+        Logs the user in and sends a message to confirm the action.
 
         Parameters:
         - form (LoginForm): The form that was submitted.
@@ -294,12 +321,49 @@ class WorkerLoginView(LoginView):
         Returns:
         - HttpResponse: A redirect to the success URL with a success message.
         """
-        response = super().form_valid(form)
-        messages.success(self.request, "You have been logged in.")
-        return response
+        email = form.cleaned_data.get("email")
+        password = form.cleaned_data.get("password")
+        user = authenticate(self.request, email=email, password=password)
+
+        if user and user.is_worker:
+            if not user.email_verified:
+                messages.error(
+                    self.request,
+                    "Your email address has not been verified. Please check your email and follow the verification link.",
+                )
+                return self.form_invalid(form)
+
+            if not user.is_active:
+                messages.error(
+                    self.request,
+                    "Your account has not been approved by the administrator. Please wait for approval and try again later.",
+                )
+                return self.form_invalid(form)
+
+            login(self.request, user)
+            messages.success(self.request, f"You are now logged in as {user.username}.")
+            return super().form_valid(form)
+        else:
+            messages.error(self.request, "Invalid email or password.")
+            return self.form_invalid(form)
+
+    def form_invalid(self, form):
+        """
+        Called when an invalid form is submitted.
+
+        Sends an error message to the user.
+
+        Parameters:
+        - form (LoginForm): The form that was submitted.
+
+        Returns:
+        - HttpResponse: A redirect to the login URL with an error message.
+        """
+        messages.error(self.request, "Invalid email or password.")
+        return super().form_invalid(form)
 
 
-@method_decorator(login_required(login_url="login"), name="dispatch")
+@method_decorator(login_required(login_url="worker_login"), name="dispatch")
 class WorkerLogoutView(LogoutView):
     """
     A view for logging out a worker.
@@ -330,7 +394,7 @@ class WorkerLogoutView(LogoutView):
         return super().dispatch(request, *args, **kwargs)
 
 
-@method_decorator(login_required(login_url="login"), name="dispatch")
+@method_decorator(login_required(login_url="worker_login"), name="dispatch")
 class WorkerProfileView(DetailView):
     """
     A view for displaying a worker's profile.
@@ -363,46 +427,53 @@ class WorkerProfileView(DetailView):
         return context
 
 
-class WorkerProfileUpdate(LoginRequiredMixin, UpdateView):
+@method_decorator(login_required(login_url="worker_login"), name="dispatch")
+class WorkerProfileUpdateView(UpdateView):
+    """
+    A view for updating a worker's profile.
+
+    Allows the worker to update their profile details, such as their name, email,
+    phone number, and location. If the worker updates their hourly pay rate, their
+    is_active flag will be set to False and the update will require admin approval.
+    """
+
     model = Worker
-    template_name = "worker_profile_update.html"
     form_class = WorkerProfileUpdateForm
+    template_name = "users/worker_profile_update.html"
     success_url = "/worker-profile/"
-    login_url = "/worker/login/"
 
-    def get_object(self, queryset=None):
-        worker = Worker.objects.filter(user=self.request.user)
-        if worker.exists():
-            return worker.first()
+    def form_valid(self, form):
+        """
+        Called when a valid form is submitted.
+
+        Saves the form and sends a message to the user to confirm the profile update.
+        If the worker is updating their hourly pay rate, their is_active flag will be
+        set to False and the update will require admin approval.
+
+        Parameters:
+        - form (WorkerProfileUpdateForm): The form that was submitted.
+
+        Returns:
+        - HttpResponse: A redirect to the success URL with a success message.
+        """
+        response = super().form_valid(form)
+
+        # Check if hourly pay rate was updated and user is a worker
+        if (
+            self.request.user.is_worker
+            and form.cleaned_data["hourly_rate"] != self.object.hourly_rate
+        ):
+            self.object.is_active = False
+            self.object.save()
+
+            # Set session flag for pending hourly pay rate approval
+            self.request.session["hourly_rate_pending_approval"] = True
+
+            # Send message to user
+            messages.success(
+                self.request, "Hourly pay rate updated. Pending admin approval."
+            )
         else:
-            raise PermissionDenied
+            messages.success(self.request, "Profile updated successfully.")
 
-
-class WorkerSkillsUpdate(LoginRequiredMixin, UpdateView):
-    model = Worker
-    template_name = "worker_skills_update.html"
-    form_class = WorkerSkillsUpdateForm
-    success_url = "/worker-profile/"
-    login_url = "/worker/login/"
-
-    def get_object(self, queryset=None):
-        worker = Worker.objects.filter(user=self.request.user)
-        if worker.exists():
-            return worker.first()
-        else:
-            raise PermissionDenied
-
-
-class WorkerRateUpdate(LoginRequiredMixin, UpdateView):
-    model = Worker
-    template_name = "worker_rate_update.html"
-    form_class = WorkerRateUpdateForm
-    success_url = "/worker-profile/"
-    login_url = "/worker/login/"
-
-    def get_object(self, queryset=None):
-        worker = Worker.objects.filter(user=self.request.user)
-        if worker.exists():
-            return worker.first()
-        else:
-            raise PermissionDenied
+        return response
