@@ -31,10 +31,14 @@ class Customer(User):
         verbose_name_plural = "Customers"
 
 
+class Skill(models.Model):
+    name = models.CharField(max_length=100)
+
+
 class Worker(User):
     phone_number = models.CharField(max_length=20)
     location = models.CharField(max_length=100)
-    skillset = models.CharField(max_length=400)
+    skills = models.ManyToManyField(Skill)
     hourly_rate = models.FloatField()
     email_verified = models.BooleanField(default=False)
     is_available = models.BooleanField(default=False)

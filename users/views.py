@@ -1,185 +1,209 @@
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import ValidationError
-from django.contrib.auth.models import Permission, User
-from django.contrib.auth.views import (
-    LoginView as Login,
-    LogoutView as Logout,
-)
-from django.contrib import messages
-from django.contrib.sites.shortcuts import get_current_site
-from django.core.exceptions import PermissionDenied
-from django.core.mail import EmailMessage, BadHeaderError
-from django.http import HttpResponseRedirect
-from django.shortcuts import redirect, render
-from django.template.loader import render_to_string
-from django.urls import reverse_lazy
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
-from django.views.generic import (
-    FormView,
-    TemplateView,
-    UpdateView,
-)
-from users.forms import (
-    CustomerProfileUpdateForm,
-    CustomerRegistrationForm,
-    WorkerProfileUpdateForm,
-    WorkerRateUpdateForm,
-    WorkerRegistrationForm,
-    WorkerSkillsUpdateForm,
-    LoginForm,
-)
-from users.models import Customer, Worker
-from users.tokens import account_activation_token
-from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.core.mail import send_mail
+from django.shortcuts import redirect
+from django.views.generic import CreateView
+
+from users.forms import CustomerRegistrationForm
+from users.models import Customer
+
+User = get_user_model()
 
 
-class CustomerSignUp(TemplateView):
-    template_name = "signup_customer.html"
+class CustomerRegistrationView(CreateView):
+    """
+    A view for customer registration.
+
+    On successful registration, sends email to customer and notification email to admin.
+
+    """
+
+    model = Customer
     form_class = CustomerRegistrationForm
-    success_url = reverse_lazy("registration/account_activation_sent")
+    template_name = "users/registration_form.html"
 
-    def get(self, request, *args, **kwargs):
-        form = self.form_class()
-        return render(request, self.template_name, {"form": form})
+    def form_valid(self, form):
+        """
+        If form is valid, create a new customer and save to the database.
 
-    def post(self, request, *args, **kwargs):
-        form = self.form_class(request.POST)
-        if form.is_valid():
+        If email, username, or phone number already exists, redirect back to registration form.
+
+        """
+        try:
             # Check if email already exists
-            email = form.cleaned_data.get("email")
+            email = form.cleaned_data["email"]
             if User.objects.filter(email=email).exists():
-                form.add_error("email", "This email is already registered.")
-                return render(request, self.template_name, {"form": form})
+                form.add_error("email", "Email already exists.")
+                return self.form_invalid(form)
 
             # Check if username already exists
-            username = form.cleaned_data.get("username")
+            username = form.cleaned_data["username"]
             if User.objects.filter(username=username).exists():
-                form.add_error("username", "This username is already taken.")
-                return render(request, self.template_name, {"form": form})
+                form.add_error("username", "Username already exists.")
+                return self.form_invalid(form)
 
             # Check if phone number already exists
-            phone_number = form.cleaned_data.get("phone_number")
+            phone_number = form.cleaned_data["phone_number"]
             if Customer.objects.filter(phone_number=phone_number).exists():
-                form.add_error(
-                    "phone_number", "This phone number is already registered."
-                )
-                return render(request, self.template_name, {"form": form})
+                form.add_error("phone_number", "Phone number already exists.")
+                return self.form_invalid(form)
 
-            # Create the user and customer instances
-            user = form.save(commit=False)
-            user.is_customer = True
-            user.is_active = False
-            user.email = email
-            try:
-                user.save()
-            except ValidationError as e:
-                form.add_error(None, f"An error occurred while creating the user: {e}")
-                return render(request, self.template_name, {"form": form})
+            # Save customer to the database
+            self.object = form.save(commit=False)
+            self.object.is_customer = True
+            self.object.save()
 
-            customer = Customer.objects.create(
-                phone_number=phone_number,
-                location=form.cleaned_data["location"],
+            # Send verification email to customer
+            send_mail(
+                subject="Verify your email",
+                message="Please click the link below to verify your email.",
+                from_email="noreply@freelancehouseholdwork.com",
+                recipient_list=[self.object.email],
+                fail_silently=False,
             )
-
-            # Send email to customer
-            current_site = get_current_site(request)
-            mail_subject = "Activate your account."
-            message = render_to_string(
-                "acc_active_email.html",
-                {
-                    "user": user,
-                    "domain": current_site.domain,
-                    "uid": urlsafe_base64_encode(force_bytes(user.pk)),
-                    "token": account_activation_token.make_token(user),
-                },
-            )
-            to_email = form.cleaned_data.get("email")
-            email = EmailMessage(mail_subject, message, to=[to_email])
-            try:
-                email.send()
-            except BadHeaderError as e:
-                form.add_error(None, "An error occurred while sending the email.")
-                return render(request, self.template_name, {"form": form})
 
             # Send notification email to admin
-            admin_email = settings.ADMIN_EMAIL
-            message = render_to_string(
-                "new_customer_notification.html",
-                {
-                    "customer": customer,
-                },
+            send_mail(
+                subject="New customer registration",
+                message="A new customer has registered on Freelance Household Work. Please log in to the admin panel to approve or reject the registration request.",
+                from_email="noreply@freelancehouseholdwork.com",
+                recipient_list=["admin@freelancehouseholdwork.com"],
+                fail_silently=False,
             )
-            email = EmailMessage("New customer sign up", message, to=[admin_email])
-            try:
-                email.send()
-            except BadHeaderError as e:
-                form.add_error(None, "An error occurred while sending the email.")
-                return render(request, self.template_name, {"form": form})
 
-            return redirect("registration/account_activation_sent")
-        else:
-            form.add_error(None, "An error occurred while validating the form.")
-            return render(request, self.template_name, {"form": form})
+            return redirect("users:registration_done")
+
+        except Exception as e:
+            # If an error occurs, show the registration form again
+            form.add_error(None, str(e))
+            return self.form_invalid(form)
 
 
-class CustomerLogin(Login):
-    template_name = "customer_login.html"
+class CustomerLoginView(FormView):
+    """
+    A view for logging in a customer.
+
+    Allows the customer to log in to their account.
+
+    Parameters:
+    - FormView (class): Django generic view for rendering a form.
+    """
+
+    template_name = "users/customer_login.html"
     form_class = LoginForm
 
     def form_valid(self, form):
+        """
+        Called when a valid form is submitted.
+
+        Logs the user in and sends a message to confirm the action.
+
+        Parameters:
+        - form (LoginForm): The form that was submitted.
+
+        Returns:
+        - HttpResponse: A redirect to the success URL with a success message.
+        """
         email = form.cleaned_data.get("email")
         password = form.cleaned_data.get("password")
         user = authenticate(self.request, email=email, password=password)
 
-        if user is not None:
-            customer = Customer.objects.get(user=user)
-            if customer.email_verified:
-                login(self.request, user)
-                return super().form_valid(form)
-            else:
-                messages.error(
-                    self.request,
-                    "Your email is not verified. Please verify your email before logging in.",
-                )
-                return self.form_invalid(form)
+        if user and user.is_customer:
+            login(self.request, user)
+            messages.success(self.request, f"You are now logged in as {user.username}.")
+            return redirect("customer_profile")
         else:
             messages.error(self.request, "Invalid email or password.")
-            return self.form_invalid(form)
-
-
-class CustomerLogout(LoginRequiredMixin, Logout):
-    template_name = "customer_logout.html"
-    success_url = reverse_lazy("customer_login")
-
-    def dispatch(self, request, *args, **kwargs):
-        if request.user.is_authenticated and request.user.is_customer:
-            return super().dispatch(request, *args, **kwargs)
-        else:
-            messages.error(request, "You are not logged in as a customer.")
             return redirect("customer_login")
 
+    def form_invalid(self, form):
+        """
+        Called when an invalid form is submitted.
 
-class CustomerProfile(LoginRequiredMixin, TemplateView):
-    template_name = "customer_profile.html"
-    login_url = "/customer/login/"
+        Sends an error message to the user.
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["customer"] = Customer.objects.get(user=self.request.user)
-        return context
+        Parameters:
+        - form (LoginForm): The form that was submitted.
+
+        Returns:
+        - HttpResponse: A redirect to the login URL with an error message.
+        """
+        messages.error(self.request, "Invalid email or password.")
+        return redirect("customer_login")
 
 
-class CustomerProfileUpdate(LoginRequiredMixin, UpdateView):
+@method_decorator(login_required(login_url="login"), name="dispatch")
+class CustomerLogoutView(LogoutView):
+    """
+    A view for logging out a customer.
+
+    Allows the customer to log out of their account.
+
+    Parameters:
+    - LogoutView (class): Django generic view for logging a user out.
+    """
+
+    next_page = reverse_lazy("home")
+
+    def dispatch(self, request, *args, **kwargs):
+        """
+        Dispatches the view.
+
+        Logs the customer out and sends a message to confirm the action.
+
+        Parameters:
+        - request (HttpRequest): The HTTP request.
+        - args: Additional arguments.
+        - kwargs: Additional keyword arguments.
+
+        Returns:
+        - HttpResponse: A redirect to the next page URL with a success message.
+        """
+        messages.success(request, "You have been logged out.")
+        return super().dispatch(request, *args, **kwargs)
+
+
+@method_decorator(login_required(login_url="login"), name="dispatch")
+class CustomerProfileUpdateView(UpdateView):
+    """
+    A view for updating a customer's profile.
+
+    Allows the customer to update their profile details, such as their name, email,
+    phone number, and location.
+
+    Parameters:
+    - UpdateView (class): Django generic view for updating objects in the database.
+    """
+
     model = Customer
     form_class = CustomerProfileUpdateForm
-    template_name = "customer_profile_update.html"
-    success_url = "/customer/profile/"
-    login_url = "/customer/login/"
+    template_name = "users/customer_profile_update.html"
+    success_url = reverse_lazy("customer_profile")
 
-    def get_object(self, queryset=None):
+    def form_valid(self, form):
+        """
+        Called when a valid form is submitted.
+
+        Saves the form and sends a message to the user to confirm the profile update.
+
+        Parameters:
+        - form (CustomerProfileUpdateForm): The form that was submitted.
+
+        Returns:
+        - HttpResponse: A redirect to the success URL with a success message.
+        """
+        response = super().form_valid(form)
+        self.object.email_verified = False
+        self.object.save()
+        messages.success(self.request, "Profile updated successfully.")
+        return response
+
+    def get_object(self):
+        """
+        Gets the object being updated.
+
+        Returns:
+        - object (Customer): The customer object being updated.
+        """
         return Customer.objects.get(user=self.request.user)
 
 
@@ -242,55 +266,100 @@ class WorkerSignUp(TemplateView):
         return render(request, self.template_name, {"form": form})
 
 
-class WorkerLogin(Login):
-    template_name = "worker_login.html"
+@method_decorator(never_cache, name="dispatch")
+@method_decorator(csrf_protect, name="dispatch")
+class WorkerLoginView(LoginView):
+    """
+    A view for logging in a worker.
+
+    Allows the worker to log in to their account.
+
+    Parameters:
+    - LoginView (class): Django generic view for logging a user in.
+    """
+
+    template_name = "users/login.html"
     form_class = LoginForm
+    success_url = reverse_lazy("worker_home")
 
     def form_valid(self, form):
-        email = form.cleaned_data.get("email")
-        password = form.cleaned_data.get("password")
-        user = authenticate(self.request, email=email, password=password)
+        """
+        Called when a valid form is submitted.
 
-        if user is not None:
-            worker = Worker.objects.get(user=user)
-            if worker.email_verified:
-                if worker.approved:
-                    login(self.request, user)
-                    return super().form_valid(form)
-                else:
-                    messages.error(
-                        self.request,
-                        "Your account is pending approval from the admin. Please try again later.",
-                    )
-                    return self.form_invalid(form)
-            else:
-                messages.error(
-                    self.request,
-                    "Your email is not verified. Please verify your email before logging in.",
-                )
-                return self.form_invalid(form)
-        else:
-            messages.error(self.request, "Invalid email or password.")
-            return self.form_invalid(form)
+        Logs the worker in and sends a message to confirm the action.
+
+        Parameters:
+        - form (LoginForm): The form that was submitted.
+
+        Returns:
+        - HttpResponse: A redirect to the success URL with a success message.
+        """
+        response = super().form_valid(form)
+        messages.success(self.request, "You have been logged in.")
+        return response
 
 
-class WorkerLogout(LoginRequiredMixin, Logout):
-    template_name = "worker_logout.html"
-    success_url = reverse_lazy("worker_login")
+@method_decorator(login_required(login_url="login"), name="dispatch")
+class WorkerLogoutView(LogoutView):
+    """
+    A view for logging out a worker.
+
+    Allows the worker to log out of their account.
+
+    Parameters:
+    - LogoutView (class): Django generic view for logging a user out.
+    """
+
+    next_page = reverse_lazy("home")
 
     def dispatch(self, request, *args, **kwargs):
-        if not request.user.is_authenticated:
-            return HttpResponseRedirect(reverse_lazy("worker_login"))
+        """
+        Dispatches the view.
+
+        Logs the worker out and sends a message to confirm the action.
+
+        Parameters:
+        - request (HttpRequest): The HTTP request.
+        - args: Additional arguments.
+        - kwargs: Additional keyword arguments.
+
+        Returns:
+        - HttpResponse: A redirect to the next page URL with a success message.
+        """
+        messages.success(request, "You have been logged out.")
         return super().dispatch(request, *args, **kwargs)
 
 
-class WorkerProfile(LoginRequiredMixin, TemplateView):
-    template_name = "worker_profile.html"
-    login_url = "/login/"
+@method_decorator(login_required(login_url="login"), name="dispatch")
+class WorkerProfileView(DetailView):
+    """
+    A view for displaying a worker's profile.
+
+    Allows a customer to view a worker's profile.
+
+    Parameters:
+    - DetailView (class): Django generic view for displaying a detail page for a single object.
+    """
+
+    model = Worker
+    template_name = "users/worker_profile.html"
 
     def get_context_data(self, **kwargs):
+        """
+        Returns the context data for the view.
+
+        Adds the worker's average rating to the context.
+
+        Parameters:
+        - kwargs: Additional keyword arguments.
+
+        Returns:
+        - dict: The context data for the view.
+        """
         context = super().get_context_data(**kwargs)
-        context["worker"] = Worker.objects.get(user=self.request.user)
+        worker = self.object
+        rating = worker.worker_rating.aggregate(Avg("rating"))
+        context["rating"] = rating["rating__avg"] or 0.0
         return context
 
 

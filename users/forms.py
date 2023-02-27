@@ -1,13 +1,16 @@
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
-
-from users.models import Customer, Worker
+from users.models import Customer, Worker, Skill
 
 User = get_user_model()
 
 
 class LoginForm(forms.Form):
+    """
+    A form for user authentication.
+    """
+
     email = forms.EmailField()
     password = forms.CharField(widget=forms.PasswordInput)
 
@@ -17,6 +20,10 @@ class LoginForm(forms.Form):
 
 
 class CustomerRegistrationForm(UserCreationForm):
+    """
+    A form for customer registration.
+    """
+
     phone_number = forms.CharField(max_length=20, required=True)
     location = forms.CharField(max_length=100, required=True)
 
@@ -35,6 +42,10 @@ class CustomerRegistrationForm(UserCreationForm):
 
 
 class CustomerProfileUpdateForm(forms.ModelForm):
+    """
+    A form for updating a customer's profile.
+    """
+
     first_name = forms.CharField(max_length=100)
     last_name = forms.CharField(max_length=100)
     email = forms.EmailField()
@@ -52,10 +63,25 @@ class CustomerProfileUpdateForm(forms.ModelForm):
         ]
 
 
+class SkillModelMultipleChoiceField(forms.ModelMultipleChoiceField):
+    """
+    A custom form field that renders the `Skill` model choices as checkboxes.
+    """
+
+    def label_from_instance(self, obj):
+        return obj.name
+
+
 class WorkerRegistrationForm(UserCreationForm):
+    """
+    A form for worker registration.
+    """
+
     phone_number = forms.CharField(max_length=20)
     location = forms.CharField(max_length=100)
-    skillset = forms.CharField()
+    skills = SkillModelMultipleChoiceField(
+        queryset=Skill.objects.all(), widget=forms.CheckboxSelectMultiple
+    )
     hourly_rate = forms.FloatField()
 
     class Meta:
@@ -67,7 +93,7 @@ class WorkerRegistrationForm(UserCreationForm):
             "email",
             "phone_number",
             "location",
-            "skillset",
+            "skills",
             "hourly_rate",
             "password1",
             "password2",
@@ -75,12 +101,18 @@ class WorkerRegistrationForm(UserCreationForm):
 
 
 class WorkerProfileUpdateForm(forms.ModelForm):
+    """
+    A form for updating a worker's profile.
+    """
+
     first_name = forms.CharField(max_length=100)
     last_name = forms.CharField(max_length=100)
     email = forms.EmailField()
     phone_number = forms.CharField(max_length=20)
     location = forms.CharField(max_length=100)
-    skillset = forms.CharField(widget=forms.Textarea)
+    skills = SkillModelMultipleChoiceField(
+        queryset=Skill.objects.all(), widget=forms.CheckboxSelectMultiple
+    )
     hourly_rate = forms.FloatField()
 
     class Meta:
@@ -91,22 +123,42 @@ class WorkerProfileUpdateForm(forms.ModelForm):
             "email",
             "phone_number",
             "location",
-            "skillset",
+            "skills",
             "hourly_rate",
         ]
 
 
 class WorkerRateUpdateForm(forms.ModelForm):
-    per_hour_rate = forms.FloatField()
+    """
+    A form for updating a worker's hourly rate.
+    """
+
+    hourly_rate = forms.FloatField()
 
     class Meta:
         model = Worker
         fields = ["hourly_rate"]
 
 
+class SkillForm(forms.ModelForm):
+    """
+    A form for creating a new `Skill` object.
+    """
+
+    class Meta:
+        model = Skill
+        fields = ["name"]
+
+
 class WorkerSkillsUpdateForm(forms.ModelForm):
-    skillset = forms.CharField(widget=forms.Textarea)
+    """
+    A form for updating a worker's skills.
+    """
+
+    skills = SkillModelMultipleChoiceField(
+        queryset=Skill.objects.all(), widget=forms.CheckboxSelectMultiple
+    )
 
     class Meta:
         model = Worker
-        fields = ["skillset"]
+        fields = ["skills"]
