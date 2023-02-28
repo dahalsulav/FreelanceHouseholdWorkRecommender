@@ -1,23 +1,41 @@
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, get_user_model, login
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LogoutView
-from django.contrib.messages.views import SuccessMessageMixin
-from django.core.mail import send_mail
 from django.db.models import Avg
+from django.shortcuts import redirect, render
 from django.urls import reverse_lazy
 from django.utils.decorators import method_decorator
-from django.views.generic import CreateView, DetailView, FormView, UpdateView
-from django.contrib.auth import get_user_model
+from django.views.generic import (
+    CreateView,
+    DetailView,
+    FormView,
+    TemplateView,
+    UpdateView,
+)
+from django.shortcuts import render, redirect, get_object_or_404
+from django.utils.http import urlsafe_base64_decode
+from django.utils.encoding import force_bytes
 from .forms import (
-    CustomerRegistrationForm,
     CustomerProfileUpdateForm,
+    CustomerRegistrationForm,
     LoginForm,
-    WorkerRegistrationForm,
     WorkerProfileUpdateForm,
+    WorkerRegistrationForm,
 )
 from .models import Customer, Worker
+from django.core.mail import send_mail
+from django.conf import settings
+from django.contrib import messages
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
+from django.contrib.auth.tokens import default_token_generator
 
 User = get_user_model()
+
+
+class HomeView(TemplateView):
+    template_name = "users/base.html"
 
 
 class CustomerRegistrationView(CreateView):
@@ -67,11 +85,18 @@ class CustomerRegistrationView(CreateView):
             customer.is_customer = True
             customer.save()
 
-            # Send verification email to customer
+            # Generate unique token for the customer
+            uidb64 = urlsafe_base64_encode(force_bytes(customer.pk))
+            token = default_token_generator.make_token(customer)
+
+            # Construct the activation link
+            activation_link = f"{self.request.scheme}://{self.request.get_host()}/users/activate/{uidb64}/{token}"
+
+            # Send verification email to customer with activation link
             send_mail(
                 subject="Verify your email",
-                message="Please click the link below to verify your email.",
-                from_email="noreply@freelancehouseholdwork.com",
+                message=f"Please click the link below to verify your email: {activation_link}",
+                from_email=settings.ADMIN_EMAIL,
                 recipient_list=[customer.email],
                 fail_silently=False,
             )
@@ -79,10 +104,15 @@ class CustomerRegistrationView(CreateView):
             # Send notification email to admin
             send_mail(
                 subject="New customer registration",
-                message="A new customer has registered on Freelance Household Work. Please log in to the admin panel to approve or reject the registration request.",
-                from_email="noreply@freelancehouseholdwork.com",
-                recipient_list=["admin@freelancehouseholdwork.com"],
+                message="A new customer has registered on Freelance Household Work.",
+                from_email=settings.ADMIN_EMAIL,
+                recipient_list=[settings.ADMIN_EMAIL],
                 fail_silently=False,
+            )
+
+            # Success message
+            messages.success(
+                self.request, "Your account has been created successfully!"
             )
 
             return super().form_valid(form)
@@ -90,6 +120,41 @@ class CustomerRegistrationView(CreateView):
         except Exception as e:
             form.add_error(None, str(e))
             return self.form_invalid(form)
+
+
+class CustomerRegistrationDoneView(TemplateView):
+    """
+    A view to display a success message after customer registration is complete.
+    """
+
+    template_name = "users/registration_done.html"
+
+
+def activate_account(request, uidb64, token):
+    """
+    Activate a customer account using the given uidb64 and token.
+
+    If account is already active, redirect to login page with message.
+
+    """
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        customer = get_object_or_404(Customer, pk=uid)
+    except (TypeError, ValueError, OverflowError, Customer.DoesNotExist):
+        customer = None
+
+    if customer is not None and default_token_generator.check_token(customer, token):
+        if not customer.email_verified:
+            # activate the customer account
+            customer.email_verified = True  # Set email_verified to True
+            customer.save()
+            messages.success(request, "Your account has been activated successfully!")
+        else:
+            messages.info(request, "Your account is already active.")
+        return redirect("users:customer_login")
+    else:
+        messages.error(request, "Invalid activation link.")
+        return redirect("users:base")
 
 
 class CustomerLoginView(FormView):
@@ -104,6 +169,7 @@ class CustomerLoginView(FormView):
 
     template_name = "users/customer_login.html"
     form_class = LoginForm
+    success_url = reverse_lazy("customer_profile")
 
     def form_valid(self, form):
         """
@@ -121,13 +187,19 @@ class CustomerLoginView(FormView):
         password = form.cleaned_data.get("password")
         user = authenticate(self.request, email=email, password=password)
 
-        if user and user.is_customer:
+        if isinstance(user, Customer) and user.email_verified:
             login(self.request, user)
             messages.success(self.request, f"You are now logged in as {user.username}.")
-            return redirect("customer_profile")
+            return super().form_valid(form)
+        elif isinstance(user, Customer) and not user.email_verified:
+            messages.error(
+                self.request,
+                "Your email address is not verified yet. Please check your email for a verification link.",
+            )
+            return redirect("users:customer_login")
         else:
             messages.error(self.request, "Invalid email or password.")
-            return redirect("customer_login")
+            return redirect("users:customer_login")
 
     def form_invalid(self, form):
         """
@@ -141,11 +213,12 @@ class CustomerLoginView(FormView):
         Returns:
         - HttpResponse: A redirect to the login URL with an error message.
         """
+
         messages.error(self.request, "Invalid email or password.")
-        return redirect("customer_login")
+        return redirect("users:customer_login")
 
 
-@method_decorator(login_required(login_url="login"), name="dispatch")
+@method_decorator(login_required(login_url="users:customer_login"), name="dispatch")
 class CustomerLogoutView(LogoutView):
     """
     A view for logging out a customer.
@@ -156,7 +229,7 @@ class CustomerLogoutView(LogoutView):
     - LogoutView (class): Django generic view for logging a user out.
     """
 
-    next_page = reverse_lazy("home")
+    next_page = reverse_lazy("users:base")
 
     def dispatch(self, request, *args, **kwargs):
         """
@@ -232,7 +305,7 @@ class WorkerRegistrationView(CreateView):
     model = Worker
     form_class = WorkerRegistrationForm
     template_name = "users/worker_registration_form.html"
-    success_url = reverse_lazy("registration/account_activation_sent")
+    success_url = reverse_lazy("users:account_activation_sent")
 
     def form_valid(self, form):
         """
@@ -293,6 +366,10 @@ class WorkerRegistrationView(CreateView):
             # If an error occurs, show the registration form again
             form.add_error(None, str(e))
             return self.form_invalid(form)
+
+
+def account_activation_sent(request):
+    return render(request, "users/account_activation_sent.html")
 
 
 class WorkerLoginView(FormView):

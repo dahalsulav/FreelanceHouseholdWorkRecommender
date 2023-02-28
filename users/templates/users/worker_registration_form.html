@@ -1,4 +1,4 @@
-{% extends "base.html" %} {% block content %}
+{% extends "users/base.html" %} {% block content %}
 
 <div class="container">
   <div class="row">
@@ -94,7 +94,7 @@
       </form>
       <div class="mt-3">
         Already have an account?
-        <a href="{% url 'worker_login' %}">Login here</a>.
+        <a href="{% url 'users:worker_login' %}">Login here</a>.
       </div>
     </div>
   </div>

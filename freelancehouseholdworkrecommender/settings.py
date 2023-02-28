@@ -43,7 +43,7 @@ TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [
-            os.path.join(BASE_DIR, "templates"),
+            os.path.join(BASE_DIR, "users/templates"),
         ],
         "APP_DIRS": True,
         "OPTIONS": {
@@ -119,4 +119,5 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "fhhwrecommender@gmail.com"
-EMAIL_HOST_PASSWORD = "Test@123#"
+EMAIL_HOST_PASSWORD = "oywvsujcvextxius"
+EMAIL_USE_SSL = False

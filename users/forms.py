@@ -3,12 +3,14 @@ from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 from django.urls import reverse_lazy
 from .models import Customer, Worker
+from django.contrib.auth.forms import AuthenticationForm
 
 User = get_user_model()
 
 
 class CustomerRegistrationForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput())
+    confirm_password = forms.CharField(widget=forms.PasswordInput())
 
     class Meta:
         model = Customer
@@ -17,7 +19,6 @@ class CustomerRegistrationForm(forms.ModelForm):
             "last_name",
             "email",
             "username",
-            "password",
             "phone_number",
             "location",
         ]
@@ -39,6 +40,19 @@ class CustomerRegistrationForm(forms.ModelForm):
         if Customer.objects.filter(phone_number=phone_number).exists():
             raise forms.ValidationError("Phone number already exists.")
         return phone_number
+
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get("password")
+        confirm_password = cleaned_data.get("confirm_password")
+
+        if password and confirm_password and password != confirm_password:
+            self.add_error("confirm_password", "Passwords do not match.")
+
+        cleaned_data["password"] = password
+        cleaned_data["confirm_password"] = confirm_password
+
+        return cleaned_data
 
 
 class WorkerRegistrationForm(forms.ModelForm):
@@ -99,9 +113,22 @@ class WorkerRegistrationForm(forms.ModelForm):
         return user
 
 
-class LoginForm(forms.Form):
-    email = forms.EmailField()
-    password = forms.CharField(widget=forms.PasswordInput())
+class LoginForm(AuthenticationForm):
+    username = forms.EmailField(
+        widget=forms.EmailInput(attrs={"autofocus": True, "class": "form-control"})
+    )
+    password = forms.CharField(
+        label="Password",
+        strip=False,
+        widget=forms.PasswordInput(
+            attrs={"autocomplete": "current-password", "class": "form-control"}
+        ),
+    )
+
+    error_messages = {
+        "invalid_login": "Please enter a correct email and password. Note that both fields may be case-sensitive.",
+        "inactive": "This account is inactive.",
+    }
 
 
 class CustomerProfileUpdateForm(forms.ModelForm):

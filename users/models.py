@@ -20,7 +20,7 @@ class Customer(User):
     email_verified = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"{self.user.first_name} {self.user.last_name}"
+        return f"{self.first_name} {self.last_name}"
 
     def save(self, *args, **kwargs):
         self.is_worker = False
@@ -44,7 +44,7 @@ class Worker(User):
     is_available = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"{self.user.first_name} {self.user.last_name}"
+        return f"{self.first_name} {self.last_name}"
 
     def save(self, *args, **kwargs):
         self.is_customer = False

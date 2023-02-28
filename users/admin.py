@@ -1,56 +1,69 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import User, Customer, Worker
+from django.utils.translation import gettext_lazy as _
+from users.models import Customer
 
 
-class CustomUserAdmin(UserAdmin):
+class CustomerAdmin(UserAdmin):
+    list_display = (
+        "email",
+        "username",
+        "first_name",
+        "last_name",
+        "is_customer",
+        "email_verified",
+    )
+    search_fields = ("email", "username", "first_name", "last_name")
+    list_filter = ("is_customer", "email_verified")
     fieldsets = (
-        (None, {"fields": ("username", "email", "password")}),
-        ("Personal Info", {"fields": ("first_name", "last_name")}),
         (
-            "Permissions",
+            _("Personal info"),
             {
                 "fields": (
-                    "is_active",
-                    "is_staff",
-                    "is_superuser",
-                    "groups",
-                    "user_permissions",
+                    "first_name",
+                    "last_name",
+                    "email",
+                    "phone_number",
+                    "location",
                 )
             },
         ),
-        ("Important Dates", {"fields": ("last_login", "date_joined")}),
-        ("Customer Info", {"fields": ("is_customer",)}),
+        (
+            _("Permissions"),
+            {"fields": ("is_customer", "is_active", "groups", "user_permissions")},
+        ),
     )
-
-
-class CustomerAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "first_name",
-        "last_name",
-        "email",
-        "phone_number",
-        "location",
-        "email_verified",
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": (
+                    "first_name",
+                    "last_name",
+                    "email",
+                    "phone_number",
+                    "location",
+                    "password1",
+                    "password2",
+                ),
+            },
+        ),
     )
+    ordering = ("email",)
+    actions = ["delete_model"]
 
+    def delete_model(self, request, obj):
+        """
+        Deletes a customer account and sends a confirmation message.
+        """
+        obj.email_user(
+            "Account Deletion Notification", "Your account has been deleted."
+        )
+        obj.delete()
+        self.message_user(request, "The customer account has been deleted.")
 
-class WorkerAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "first_name",
-        "last_name",
-        "email",
-        "phone_number",
-        "location",
-        "hourly_rate",
-        "is_available",
-    )
+    delete_model.short_description = "Delete selected customers"
 
 
 admin.site.register(Customer, CustomerAdmin)
-admin.site.register(Worker, WorkerAdmin)
-
-admin.site.register(User, CustomUserAdmin)
-admin.site.unregister(User)
